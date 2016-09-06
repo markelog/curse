@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kless/term"
+	"github.com/pkg/term"
 )
 
 type Cursor struct {
@@ -20,7 +20,7 @@ type Cursor struct {
 	StartingPosition Position
 	Style
 
-	terminal *term.Terminal
+	terminal *term.Term
 }
 
 type Position struct {
@@ -40,7 +40,7 @@ func New() (*Cursor, error) {
 	c := &Cursor{}
 	c.Position.X, c.StartingPosition.X = col, col
 	c.Position.Y, c.StartingPosition.Y = line, line
-	c.terminal, err = term.New()
+	c.terminal, err = term.Open("/bin/stty")
 	return c, err
 }
 
@@ -130,7 +130,7 @@ func (c *Cursor) SetDefaultStyle() *Cursor {
 }
 
 func (c *Cursor) ModeRaw() *Cursor {
-	_ = c.terminal.RawMode()
+	_ = c.terminal.SetRaw()
 
 	return c
 }
@@ -170,34 +170,19 @@ func GetScreenDimensions() (cols int, lines int, err error) {
 	return cols, lines, nil
 }
 
-func fallback_SetRawMode() {
-	rawMode := exec.Command("/bin/stty", "raw")
-	rawMode.Stdin = os.Stdin
-	_ = rawMode.Run()
-	rawMode.Wait()
-}
-
-func fallback_SetCookedMode() {
-	// I've noticed that this does not always work when called from
-	// inside the program. From command line, you can run the following
-	// '$ go run calling_app.go; stty -raw'
-	// if you lose the ability to visably enter new text
-	cookedMode := exec.Command("/bin/stty", "-raw")
-	cookedMode.Stdin = os.Stdin
-	_ = cookedMode.Run()
-	cookedMode.Wait()
-}
-
 func GetCursorPosition() (col int, line int, err error) {
 	// set terminal to raw mode and back
-	t, err := term.New()
+	t, err := term.Open("/bin/stty")
 	if err != nil {
-		fallback_SetRawMode()
-		defer fallback_SetCookedMode()
-	} else {
-		t.RawMode()
-		defer t.Restore()
+		return
 	}
+
+	err = t.SetRaw()
+	if err != nil {
+		return
+	}
+
+	defer t.Restore()
 
 	// same as $ echo -e "\033[6n"
 	// by printing the output, we are triggering input
